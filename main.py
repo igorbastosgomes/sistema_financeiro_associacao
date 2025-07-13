@@ -96,7 +96,9 @@ elif menu == "Visualizar Lançamentos":
 # Aba - Visualizar Centros de Custo
 elif menu == "Centros de Custo":
     st.header("🏷️ Centros de Custo Cadastrados")
-    df = get_centros_custo()
+    def get_centros_custo():
+    return pd.read_sql_query("SELECT id, nome FROM centros_custo", conn)
+
     st.dataframe(df)
 
 # Aba - Plano de Contas (consulta simples)
