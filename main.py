@@ -2,107 +2,91 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 
-# Banco de dados
-conn = sqlite3.connect('financeiro_associacao_novo.db', check_same_thread=False)
+conn = sqlite3.connect('sistema_financeiro_atualizado.db', check_same_thread=False)
 cursor = conn.cursor()
 
-st.set_page_config(page_title="Sistema Financeiro", layout="wide")
-st.title("💼 Sistema Financeiro da Associação")
-
-menu = st.sidebar.radio("Menu", ["Novo Lançamento", "Visualizar Lançamentos", "Plano de Contas", "Centros de Custo"])
+st.set_page_config(layout="wide")
+st.title("📘 Cadastro de Plano de Contas por Centro de Custo")
 
 # Funções auxiliares
 def get_centros_custo():
-    return pd.read_sql_query("SELECT codigo, nome FROM centros_custo", conn)
-
-def get_planos():
-    return pd.read_sql_query("SELECT DISTINCT plano_conta FROM itens_lancamento", conn)
-
-# Aba - Novo lançamento com múltiplos itens
-if menu == "Novo Lançamento":
-    st.header("📝 Novo Lançamento")
-
-    with st.form("form_lancamento"):
-        col1, col2 = st.columns(2)
-        with col1:
-            data = st.date_input("Data")
-            vencimento = st.date_input("Vencimento")
-            tipo = st.selectbox("Tipo", ["Receita", "Despesa"])
-            fornecedor = st.text_input("Fornecedor")
-        with col2:
-            documento = st.text_input("Nº Documento")
-            forma_pagamento = st.selectbox("Forma de Pagamento", ["Pix", "Boleto", "Transferência", "Dinheiro", "Cartão"])
-            parcelas = st.number_input("Parcelas", min_value=1, value=1)
-            custo_fixo = st.checkbox("Custo Fixo (Contrato)?")
-
-        st.markdown("### Rateio por Plano de Contas e Centro de Custo")
-
-        centros_df = get_centros_custo()
-        n_itens = st.number_input("Quantos itens deseja incluir?", min_value=1, value=2)
-
-        rateios = []
-        total = 0
-        for i in range(int(n_itens)):
-            st.markdown(f"**Item {i+1}**")
-            col1, col2, col3 = st.columns([3, 3, 2])
-            with col1:
-                plano = st.text_input(f"Plano de Contas - Item {i+1}", key=f"plano_{i}")
-            with col2:
-                centro = st.selectbox(f"Centro de Custo - Item {i+1}", centros_df['nome'].tolist(), key=f"centro_{i}")
-            with col3:
-                valor = st.number_input(f"Valor - Item {i+1}", min_value=0.0, step=0.01, key=f"valor_{i}")
-            rateios.append((plano, centro, valor))
-            total += valor
-
-        st.markdown(f"**Valor total rateado:** R$ {total:,.2f}")
-
-        valor_total_lancamento = st.number_input("Valor total da nota (para conferência)", min_value=0.0, step=0.01)
-
-        submitted = st.form_submit_button("Salvar Lançamento")
-
-        if submitted:
-            if abs(total - valor_total_lancamento) > 0.01:
-                st.error("⚠️ A soma dos itens não bate com o valor total informado.")
-            else:
-                cursor.execute("""
-                    INSERT INTO lancamentos (
-                        data, fornecedor, documento, tipo,
-                        forma_pagamento, parcelas, custo_fixo, vencimento, valor_total
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (data, fornecedor, documento, tipo, forma_pagamento, parcelas, int(custo_fixo), vencimento, valor_total_lancamento))
-                lancamento_id = cursor.lastrowid
-
-                for plano, centro, valor in rateios:
-                    cursor.execute("""
-                        INSERT INTO itens_lancamento (id_lancamento, centro_custo, plano_conta, valor)
-                        VALUES (?, ?, ?, ?)
-                    """, (lancamento_id, centro, plano, valor))
-
-                conn.commit()
-                st.success("✅ Lançamento salvo com sucesso!")
-
-# Aba - Visualizar lançamentos
-elif menu == "Visualizar Lançamentos":
-    st.header("📊 Lançamentos Cadastrados")
-    df = pd.read_sql_query("""
-        SELECT l.id, l.data, l.fornecedor, l.documento, l.tipo, l.forma_pagamento,
-               l.custo_fixo, l.valor_total, i.plano_conta, i.centro_custo, i.valor
-        FROM lancamentos l
-        JOIN itens_lancamento i ON l.id = i.id_lancamento
-        ORDER BY l.data DESC
-    """, conn)
-    st.dataframe(df)
-
-# Aba - Visualizar Centros de Custo
-elif menu == "Centros de Custo":
-    st.header("🏷️ Centros de Custo Cadastrados")
-    def get_centros_custo():
     return pd.read_sql_query("SELECT id, nome FROM centros_custo", conn)
 
-    st.dataframe(df)
+def listar_planos_base():
+    return pd.read_sql_query("SELECT * FROM planos_contas", conn)
 
-# Aba - Plano de Contas (consulta simples)
-elif menu == "Plano de Contas":
-    st.header("📚 Planos de Contas Usados")
-    df = get_planos()
-    st.dataframe(df)
+def listar_planos_completos():
+    return pd.read_sql_query("""
+        SELECT ppc.codigo_completo, pc.descricao, cc.nome as centro_custo
+        FROM planos_por_centro ppc
+        JOIN planos_contas pc ON pc.id = ppc.plano_base_id
+        JOIN centros_custo cc ON cc.id = ppc.centro_custo_id
+        ORDER BY ppc.codigo_completo
+    """, conn)
+
+# MENU
+aba = st.sidebar.radio("Menu", ["Cadastrar Plano", "Ver Planos Cadastrados", "Centros de Custo"])
+
+# 🧱 Cadastro de plano de contas base
+if aba == "Cadastrar Plano":
+    st.header("🗞 Novo Plano de Contas Base")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        grupo = st.number_input("Grupo", min_value=1, max_value=9, step=1)
+    with col2:
+        subgrupo = st.number_input("Subgrupo", min_value=0, max_value=99, step=1)
+    with col3:
+        item = st.number_input("Item", min_value=0, max_value=99, step=1)
+
+    descricao = st.text_input("Descrição")
+
+    centros_df = get_centros_custo()
+    centros_selecionados = st.multiselect(
+        "Selecionar centros de custo para aplicar esse plano",
+        centros_df['nome'].tolist()
+    )
+
+    if st.button("Cadastrar Plano"):
+        if not descricao or not centros_selecionados:
+            st.error("Preencha todos os campos e selecione pelo menos um centro de custo.")
+        else:
+            # Inserir plano base
+            cursor.execute("""
+                INSERT INTO planos_contas (grupo, subgrupo, item, descricao)
+                VALUES (?, ?, ?, ?)
+            """, (grupo, subgrupo, item, descricao))
+            plano_id = cursor.lastrowid
+
+            # Inserir combinações com centros
+            for nome in centros_selecionados:
+                centro_id = centros_df[centros_df['nome'] == nome]['id'].values[0]
+                codigo = f"{grupo}.{subgrupo}.{item}.{centro_id}"
+                cursor.execute("""
+                    INSERT INTO planos_por_centro (plano_base_id, centro_custo_id, codigo_completo)
+                    VALUES (?, ?, ?)
+                """, (plano_id, centro_id, codigo))
+
+            conn.commit()
+            st.success("Plano cadastrado com sucesso para os centros selecionados.")
+
+# 📋 Visualização dos planos cadastrados
+elif aba == "Ver Planos Cadastrados":
+    st.header("📂 Planos de Contas por Centro de Custo")
+    df = listar_planos_completos()
+    st.dataframe(df, use_container_width=True)
+
+# 🗞 Edição de centros de custo
+elif aba == "Centros de Custo":
+    st.header("🏷️ Editar Centros de Custo")
+    centros_df = get_centros_custo()
+    st.dataframe(centros_df)
+
+    with st.form("novo_centro"):
+        novo_nome = st.text_input("Novo centro de custo")
+        if st.form_submit_button("Adicionar"):
+            if novo_nome.strip():
+                cursor.execute("INSERT OR IGNORE INTO centros_custo (nome) VALUES (?)", (novo_nome.strip(),))
+                conn.commit()
+                st.success("Centro de custo adicionado.")
+            else:
+                st.warning("Digite um nome válido.")
