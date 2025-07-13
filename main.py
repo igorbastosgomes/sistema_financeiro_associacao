@@ -1,6 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import matplotlib.pyplot as plt
 
 conn = sqlite3.connect('sistema_associacao_completo.db', check_same_thread=False)
 cursor = conn.cursor()
@@ -8,7 +9,6 @@ cursor = conn.cursor()
 st.set_page_config(layout="wide")
 st.title("📘 Sistema Financeiro da Associação")
 
-# Funções auxiliares
 def get_centros_custo():
     return pd.read_sql_query("SELECT id, nome FROM centros_custo", conn)
 
@@ -35,10 +35,8 @@ def listar_planos_por_centro():
         JOIN centros_custo cc ON ppc.centro_custo_id = cc.id
     """, conn)
 
-# MENU
 aba = st.sidebar.radio("Menu", ["Cadastrar Plano", "Ver Planos Cadastrados", "Centros de Custo", "Fornecedores", "Lançamentos", "Relatórios e Dashboards"])
 
-# Cadastro de plano de contas base
 if aba == "Cadastrar Plano":
     st.header("🧾 Novo Plano de Contas Base")
     col1, col2, col3 = st.columns(3)
@@ -73,13 +71,11 @@ if aba == "Cadastrar Plano":
             conn.commit()
             st.success("Plano cadastrado com sucesso para todos os centros de custo.")
 
-# Visualização dos planos cadastrados
 elif aba == "Ver Planos Cadastrados":
     st.header("📂 Planos de Contas por Centro de Custo")
     df = listar_planos_completos()
     st.dataframe(df, use_container_width=True)
 
-# Edição de centros de custo
 elif aba == "Centros de Custo":
     st.header("🏷️ Editar Centros de Custo")
     centros_df = get_centros_custo()
@@ -95,7 +91,6 @@ elif aba == "Centros de Custo":
             else:
                 st.warning("Digite um nome válido.")
 
-# Cadastro de fornecedores
 elif aba == "Fornecedores":
     st.header("🏢 Cadastro de Fornecedores")
     with st.form("cadastro_fornecedor"):
@@ -118,7 +113,6 @@ elif aba == "Fornecedores":
     fornecedores_df = listar_fornecedores()
     st.dataframe(fornecedores_df, use_container_width=True)
 
-# Lançamentos
 elif aba == "Lançamentos":
     st.header("💰 Lançar Despesa")
     with st.form("form_lancamento"):
@@ -143,7 +137,9 @@ elif aba == "Lançamentos":
                 plano = st.selectbox(f"Plano {i+1}", planos_df['codigo_completo'].tolist(), key=f"plano_{i}")
             with col2:
                 valor = st.number_input(f"Valor {i+1}", min_value=0.0, step=0.01, key=f"valor_{i}")
-            rateio.append((plano, valor))
+            if valor > 0:
+                plano_id = planos_df[planos_df['codigo_completo'] == plano]['id'].values[0]
+                rateio.append((plano_id, valor))
 
         if st.form_submit_button("Salvar Lançamento"):
             fornecedor_id = fornecedores_df[fornecedores_df['nome'] == fornecedor]['id'].values[0]
@@ -154,8 +150,7 @@ elif aba == "Lançamentos":
             """, (data, fornecedor_id, doc, descricao, valor_total, forma_pagamento, parcelas, contrato, vencimento, imposto_retido))
             lancamento_id = cursor.lastrowid
 
-            for plano_cod, valor in rateio:
-                plano_id = planos_df[planos_df['codigo_completo'] == plano_cod]['id'].values[0]
+            for plano_id, valor in rateio:
                 cursor.execute("""
                     INSERT INTO itens_lancamento (id_lancamento, plano_centro_id, valor)
                     VALUES (?, ?, ?)
@@ -164,7 +159,6 @@ elif aba == "Lançamentos":
             conn.commit()
             st.success("Lançamento registrado com sucesso!")
 
-# Relatórios e Dashboards
 elif aba == "Relatórios e Dashboards":
     st.header("📊 Prestação de Contas e Gráficos")
     df = pd.read_sql_query("""
@@ -184,8 +178,6 @@ elif aba == "Relatórios e Dashboards":
     st.dataframe(resumo_categoria)
 
     st.subheader("Gráfico Donut por Centro de Custo")
-    import matplotlib.pyplot as plt
-
     fig, ax = plt.subplots()
     ax.pie(resumo_centro['valor'], labels=resumo_centro['centro'], wedgeprops=dict(width=0.4))
     ax.set(aspect="equal")
@@ -196,5 +188,4 @@ elif aba == "Relatórios e Dashboards":
     ax2.pie(resumo_categoria['valor'], labels=resumo_categoria['descricao'], wedgeprops=dict(width=0.4))
     ax2.set(aspect="equal")
     st.pyplot(fig2)
-
 
