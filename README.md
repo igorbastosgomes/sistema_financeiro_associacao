@@ -1,1 +1,0 @@
-# sistema_financeiro_associacao
